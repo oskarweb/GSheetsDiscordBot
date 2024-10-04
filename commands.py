@@ -35,8 +35,9 @@ def assign_commands(bot: BotImpl):
 
     @bot.tree.command(name="post_activity")
     @discord.app_commands.describe(
-        screenshot="SS with entire screen visible",
-        participants="Comma separated list of participants, no spaces"
+        participants="Comma separated list of participants, no spaces",
+        activity="Activity name",
+        img1="jpg or png"
     )
     @discord.app_commands.choices(activity=[
         discord.app_commands.Choice(name=name, value=name) for name, value in ACTIVITIES.items()
@@ -45,22 +46,35 @@ def assign_commands(bot: BotImpl):
     @discord.app_commands.checks.cooldown(1, 10)
     async def post_activity(
             interaction: discord.Interaction,
-            screenshot: discord.Attachment,
             participants: str,
-            activity: str
+            activity: str,
+            img1: discord.Attachment,
+            img2: discord.Attachment = None,
+            img3: discord.Attachment = None,
+            img4: discord.Attachment = None
     ):
         async with bot.lock:
+            valid_screenshots = [img for img in [img1, img2, img3, img4] if img]
             if not bot.guilds_data[str(interaction.guild.id)]["sheet"]:
                 return await interaction.response.send_message("Sheet not configured.")
+            for screenshot in valid_screenshots:
+                if screenshot.content_type not in ["image/jpeg", "image/png"]:
+                    return await interaction.response.send_message("Invalid file type.")
             guild_id = str(interaction.guild.id)
-            e = discord.Embed()
-            e.set_author(name=participants)
-            e.set_image(url=screenshot.url)
-            e.set_footer(text=activity)
-            await interaction.response.send_message(embed=e)  # add embed
+
+            embeds = []
+            for screenshot in valid_screenshots:
+                e = discord.Embed(url="https://example.com")
+                e.set_author(name=participants)
+                e.set_image(url=screenshot.url)
+                e.set_footer(text=activity)
+                embeds.append(e)
+            await interaction.response.send_message(embeds=embeds)  # add embed
+
             message = await interaction.original_response()
             await message.add_reaction(CHECK_MARK_EMOJI)
             await message.add_reaction(CROSS_MARK_EMOJI)
+
             cache_activity(guild_id, str(message.id))
             bot.guilds_data[guild_id]["activities_awaiting_approval"].add(message.id)
 

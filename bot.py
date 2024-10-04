@@ -25,7 +25,6 @@ class BotImpl(commands.Bot):
         if payload.user_id == self.user:
             return
 
-        print("Reaction added")
         if payload.message_id in self.guilds_data[guild_id]["activities_awaiting_approval"]:
             try:
                 with PrioritySheet(

@@ -158,6 +158,9 @@ cython_debug/
 guilds/
 credentials.json
 token.json
+opencv_test.py
+sheettest.py
+test.py
 
 # PyCharm
 #  JetBrains specific template is maintained in a separate JetBrains.gitignore that can
