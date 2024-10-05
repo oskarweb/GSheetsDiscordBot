@@ -5,6 +5,8 @@ GUILDS_DIR = "guilds"
 ACTIVITY_CACHE_FILE = "activities.csv"
 SHEET_CACHE_FILE = "sheet_cache.csv"
 ROLES_FILE = "roles.json"
+SERVICE_ACCOUNT_FILE = "credentials.json"
+LOG_FILE = "log.txt"
 
 USED_ID = {"column": "C", "row": 2}
 GAINED_ID = {"column": "B", "row": 1}

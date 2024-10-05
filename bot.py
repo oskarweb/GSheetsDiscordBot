@@ -4,12 +4,16 @@ import typing
 from typing import Dict
 from asyncio import Lock
 import json
+import logging
 
 import discord
 from discord.ext import commands
 
 from constants import *
 from priority_sheet import PrioritySheet
+from util import log_point_change
+
+logger = logging.getLogger(__name__)
 
 
 class BotImpl(commands.Bot):
@@ -24,7 +28,7 @@ class BotImpl(commands.Bot):
     async def on_raw_reaction_add(self, payload: discord.RawReactionActionEvent):
         guild_id = str(payload.guild_id)
         async with self.locks[guild_id]:
-            if payload.user_id == self.user:
+            if payload.user_id == self.user.id:
                 return
 
             if payload.message_id in self.guilds_data[guild_id]["activities_awaiting_approval"]:
@@ -42,10 +46,17 @@ class BotImpl(commands.Bot):
                     await self.get_channel(payload.channel_id).send(f"Error handling activity{e}")
 
     async def handle_posted_activity(self, message: discord.Message, emoji: discord.PartialEmoji, p_sheet: PrioritySheet):
+        guild_id = str(message.guild.id)
+        members = message.embeds[0].author.name
+        activity = message.embeds[0].footer.text
         if str(emoji) == CHECK_MARK_EMOJI:
-            if not p_sheet.update_priority_from_activity(message.embeds[0].author.name, message.embeds[0].footer.text):
-                await self.get_channel(message.channel.id).send("Something went wrong.")
-                return
+            try:
+                p_sheet.update_priority_from_activity(members, activity)
+                log_point_change(logger, guild_id, f"Added {activity} points: {members}")
+            except ValueError as err:
+                return await self.get_channel(message.channel.id).send(f"{err}")
+            except Exception:
+                return await self.get_channel(message.channel.id).send("Something went wrong.")
             await self.get_channel(message.channel.id).send(
                 f"Accepted {message.embeds[0].footer.text} for {message.embeds[0].author.name}"
             )

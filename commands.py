@@ -7,8 +7,10 @@ from constants import *
 from util import *
 from priority_sheet import PrioritySheet
 from bot import BotImpl
+import logging
 
-import traceback
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
 
 
 def assign_commands(bot: BotImpl):
@@ -96,8 +98,8 @@ def assign_commands(bot: BotImpl):
             else:
                 nickname = member
             try:
-                if points := p_sheet.get_priority_from_nickname(nickname):
-                    return await interaction.response.send_message(f"{nickname} has {points} points.", ephemeral=True)
+                if nick_points := p_sheet.get_priority_from_nickname(nickname):
+                    return await interaction.response.send_message(f"{nick_points[0]} has {nick_points[1]} points.", ephemeral=True)
             except Exception:
                 return await interaction.response.send_message(f"Something went wrong.", ephemeral=True)
             await interaction.response.send_message(f"{nickname} not found.", ephemeral=True)
@@ -120,8 +122,8 @@ def assign_commands(bot: BotImpl):
                     return await interaction.response.send_message("Something went wrong.", ephemeral=True)
                 try:
                     p_sheet.wb_update(names_values, float(bot.guilds_data[guild_id]["roles"]["scout"]), GAINED_ID)
-                except Exception as e:
-                    print(traceback.format_exc())
+                    log_point_change(logger, guild_id, f"Added scout points: {names_values}")
+                except Exception:
                     return await interaction.response.send_message("Something went wrong.", ephemeral=True)
                 await interaction.response.send_message("Points updated.", ephemeral=True)
 
@@ -143,6 +145,7 @@ def assign_commands(bot: BotImpl):
                     return await interaction.response.send_message("Something went wrong.", ephemeral=True)
                 try:
                     p_sheet.wb_update(names_values, float(bot.guilds_data[guild_id]["roles"]["common"]), USED_ID)
+                    log_point_change(logger, guild_id, f"Used points common role: {names_values}")
                 except Exception:
                     return await interaction.response.send_message("Something went wrong.", ephemeral=True)
                 await interaction.response.send_message("Points updated.", ephemeral=True)

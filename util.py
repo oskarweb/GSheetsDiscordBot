@@ -1,7 +1,7 @@
 import os
 import re
 import csv
-from fractions import Fraction
+import logging
 
 import discord
 
@@ -47,3 +47,13 @@ def set_intents() -> discord.Intents:
     intents.reactions = True
     intents.members = True
     return intents
+
+
+def log_point_change(logger: logging.Logger, guild_id: str, msg: str):
+    file_handler = logging.FileHandler(os.path.join(GUILDS_DIR, guild_id, "point_changes.log"))
+    formatter = logging.Formatter('%(asctime)s - %(name)s - %(message)s')
+    file_handler.setFormatter(formatter)
+    logger.addHandler(file_handler)
+    logger.info(msg)
+    logger.removeHandler(file_handler)
+

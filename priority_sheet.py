@@ -7,10 +7,10 @@ class PrioritySheet(GSheet):
         super().__init__(sheet_id, sheet_range)
         self.sheet_name = sheet_range.split('!')[0]
 
-    def get_priority_from_nickname(self, nickname: str):
+    def get_priority_from_nickname(self, nickname: str) -> tuple[str, str] | None:
         for row in self.get_sheet_values():
             if row[0].lower() == nickname.lower():
-                return row[3]
+                return row[0], row[3]
         return None
 
     def update_priority_from_activity(self, names: str, activity: str):
@@ -23,8 +23,8 @@ class PrioritySheet(GSheet):
                     'range': f"{self.sheet_range.split('!')[0]}!B{idx + 1}",
                     'values': [[new_value]]
                 })
-        if not updated_values:
-            return None
+        if len(names_set) != len(updated_values):
+            raise ValueError("Invalid name.")
         try:
             self.update_values(updated_values)
         except Exception as err:
