@@ -35,6 +35,22 @@ class GSheet:
         )
         return result.get("values", [])
 
+    def update_values(self, new_values: list):
+        body = {
+            'valueInputOption': 'USER_ENTERED',
+            'data': new_values
+        }
+        try:
+            result = (
+                self.gsheets_connection.spreadsheets().values()
+                .batchUpdate(spreadsheetId=self.sheet_id, body=body)
+                .execute()
+            )
+        except Exception as err:
+            raise RuntimeError(f"Failed to update spreadsheet: {err}")
+        else:
+            return result
+
     @classmethod
     def init_sheets_connection(cls):
         creds = None

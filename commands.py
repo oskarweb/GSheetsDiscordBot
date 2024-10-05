@@ -8,30 +8,31 @@ from util import *
 from priority_sheet import PrioritySheet
 from bot import BotImpl
 
+import traceback
+
 
 def assign_commands(bot: BotImpl):
     @bot.tree.command(name="set_sheet")
     async def set_sheet(interaction: discord.Interaction, sheet_id: str, range_name: str):
         guild_id = str(interaction.guild.id)
+        async with bot.locks[guild_id]:
+            if not is_valid_sheet_id(sheet_id):
+                return await interaction.response.send_message("Invalid sheet ID", ephemeral=True)
 
-        if not is_valid_sheet_id(sheet_id):
-            await interaction.response.send_message("Invalid sheet ID", ephemeral=True)
-            return
-        if not is_valid_range_name(range_name):
-            await interaction.response.send_message("Invalid range", ephemeral=True)
-            return
+            if not is_valid_range_name(range_name):
+                return await interaction.response.send_message("Invalid range", ephemeral=True)
 
-        try:
-            with open(os.path.join(GUILDS_DIR, guild_id, SHEET_CACHE_FILE), "w", newline='') as sheet_cache:
-                csvwriter = csv.writer(sheet_cache, delimiter=",")
-                csvwriter.writerow([sheet_id, range_name])
-                bot.guilds_data[guild_id]["sheet"] = {
-                    "id": sheet_id,
-                    "range_name": range_name
-                }
-            await interaction.response.send_message("Google Sheets configuration saved successfully.", ephemeral=True)
-        except Exception:
-            await interaction.response.send_message(f"An error occurred.", ephemeral=True)
+            try:
+                with open(os.path.join(GUILDS_DIR, guild_id, SHEET_CACHE_FILE), "w", newline='') as sheet_cache:
+                    csvwriter = csv.writer(sheet_cache, delimiter=",")
+                    csvwriter.writerow([sheet_id, range_name])
+                    bot.guilds_data[guild_id]["sheet"] = {
+                        "id": sheet_id,
+                        "range_name": range_name
+                    }
+                await interaction.response.send_message("Google Sheets configuration saved successfully.", ephemeral=True)
+            except Exception:
+                await interaction.response.send_message(f"An error occurred.", ephemeral=True)
 
     @bot.tree.command(name="post_activity")
     @discord.app_commands.describe(
@@ -53,13 +54,14 @@ def assign_commands(bot: BotImpl):
             img3: discord.Attachment = None,
             img4: discord.Attachment = None
     ):
-        async with bot.lock:
+        guild_id = str(interaction.guild.id)
+        async with bot.locks[guild_id]:
             valid_screenshots = [img for img in [img1, img2, img3, img4] if img]
-            if not bot.guilds_data[str(interaction.guild.id)]["sheet"]:
-                return await interaction.response.send_message("Sheet not configured.")
+            if not bot.guilds_data[guild_id]["sheet"]:
+                return await interaction.response.send_message("Sheet not configured.", ephemeral=True)
             for screenshot in valid_screenshots:
                 if screenshot.content_type not in ["image/jpeg", "image/png"]:
-                    return await interaction.response.send_message("Invalid file type.")
+                    return await interaction.response.send_message("Invalid file type.", ephemeral=True)
             guild_id = str(interaction.guild.id)
 
             embeds = []
@@ -81,21 +83,69 @@ def assign_commands(bot: BotImpl):
     @bot.tree.command(name="points")
     @discord.app_commands.checks.cooldown(1, 5)
     async def fetch_points(interaction: discord.Interaction, member: str):
-        if not bot.guilds_data[str(interaction.guild.id)]["sheet"]:
-            return await interaction.response.send_message("Sheet not configured.")
+        guild_id = str(interaction.guild.id)
+        if not bot.guilds_data[guild_id]["sheet"]:
+            return await interaction.response.send_message("Sheet not configured.", ephemeral=True)
         with PrioritySheet(
-                bot.guilds_data[str(interaction.guild.id)]["sheet"]["id"],
-                bot.guilds_data[str(interaction.guild.id)]["sheet"]["range_name"]
+                bot.guilds_data[guild_id]["sheet"]["id"],
+                bot.guilds_data[guild_id]["sheet"]["range_name"]
         ) as p_sheet:
-            if str(member).startswith('<@'):
+            if member.startswith('<@'):
                 member_id = int(member.strip('<@!>'))
                 nickname = interaction.guild.get_member(member_id).display_name
             else:
                 nickname = member
-            if points := p_sheet.get_priority_from_nickname(nickname):
-                await interaction.response.send_message(f"{nickname} has {points} points.")
-                return
-            await interaction.response.send_message(f"{nickname} not found.")
+            try:
+                if points := p_sheet.get_priority_from_nickname(nickname):
+                    return await interaction.response.send_message(f"{nickname} has {points} points.", ephemeral=True)
+            except Exception:
+                return await interaction.response.send_message(f"Something went wrong.", ephemeral=True)
+            await interaction.response.send_message(f"{nickname} not found.", ephemeral=True)
+
+    @bot.tree.command(name="scouts")
+    @discord.app_commands.describe(
+        scouts_foods="<Member1:Foods,Member2:Foods> etc."
+    )
+    @discord.app_commands.checks.cooldown(1, 5)
+    async def add_scout(interaction: discord.Interaction, scouts_foods: str):
+        guild_id = str(interaction.guild.id)
+        async with bot.locks[guild_id]:
+            if not bot.guilds_data[guild_id]["sheet"]:
+                return await interaction.response.send_message("Sheet not configured.", ephemeral=True)
+            with PrioritySheet(
+                    bot.guilds_data[guild_id]["sheet"]["id"],
+                    bot.guilds_data[guild_id]["sheet"]["range_name"]
+            ) as p_sheet:
+                if not (names_values := parse_names_values(scouts_foods)):
+                    return await interaction.response.send_message("Something went wrong.", ephemeral=True)
+                try:
+                    p_sheet.wb_update(names_values, float(bot.guilds_data[guild_id]["roles"]["scout"]), GAINED_ID)
+                except Exception as e:
+                    print(traceback.format_exc())
+                    return await interaction.response.send_message("Something went wrong.", ephemeral=True)
+                await interaction.response.send_message("Points updated.", ephemeral=True)
+
+    @bot.tree.command(name="common_roles")
+    @discord.app_commands.describe(
+        members_foods="<Member1:Foods,Member2:Foods> etc."
+    )
+    @discord.app_commands.checks.cooldown(1, 5)
+    async def use_common(interaction: discord.Interaction, members_foods: str):
+        guild_id = str(interaction.guild.id)
+        async with bot.locks[guild_id]:
+            if not bot.guilds_data[guild_id]["sheet"]:
+                return await interaction.response.send_message("Sheet not configured.", ephemeral=True)
+            with PrioritySheet(
+                    bot.guilds_data[guild_id]["sheet"]["id"],
+                    bot.guilds_data[guild_id]["sheet"]["range_name"]
+            ) as p_sheet:
+                if not (names_values := parse_names_values(members_foods)):
+                    return await interaction.response.send_message("Something went wrong.", ephemeral=True)
+                try:
+                    p_sheet.wb_update(names_values, float(bot.guilds_data[guild_id]["roles"]["common"]), USED_ID)
+                except Exception:
+                    return await interaction.response.send_message("Something went wrong.", ephemeral=True)
+                await interaction.response.send_message("Points updated.", ephemeral=True)
 
     @fetch_points.error
     @post_activity.error
