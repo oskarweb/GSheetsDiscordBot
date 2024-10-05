@@ -11,9 +11,6 @@ from discord.ext import commands
 
 from constants import *
 from priority_sheet import PrioritySheet
-from util import log_point_change
-
-logger = logging.getLogger(__name__)
 
 
 class BotImpl(commands.Bot):
@@ -21,6 +18,7 @@ class BotImpl(commands.Bot):
         super().__init__(*args, **kwargs)
         self.guilds_data: Dict[str, Dict] = {}
         self.locks: Dict[str, Lock] = {}
+        self.loggers: Dict[str, logging.Logger] = {}
 
     async def setup_hook(self):
         await self.tree.sync()
@@ -47,12 +45,12 @@ class BotImpl(commands.Bot):
 
     async def handle_posted_activity(self, message: discord.Message, emoji: discord.PartialEmoji, p_sheet: PrioritySheet):
         guild_id = str(message.guild.id)
-        members = message.embeds[0].author.name
+        members = set([name.lower() for name in message.embeds[0].author.name.split(",")])
         activity = message.embeds[0].footer.text
         if str(emoji) == CHECK_MARK_EMOJI:
             try:
                 p_sheet.update_priority_from_activity(members, activity)
-                log_point_change(logger, guild_id, f"Added {activity} points: {members}")
+                self.log_change(guild_id, f"Added {activity} points: {members}")
             except ValueError as err:
                 return await self.get_channel(message.channel.id).send(f"{err}")
             except Exception:
@@ -110,6 +108,27 @@ class BotImpl(commands.Bot):
             if os.path.exists(os.path.join(guild_dir, ROLES_FILE)):
                 with open(os.path.join(guild_dir, ROLES_FILE), "r", encoding="utf-8") as roles_file:
                     self.guilds_data[guild_id].update(json.load(roles_file))
+
+    def setup_logger_for_guild(self, guild_id: str):
+        if guild_id not in self.loggers:
+            logger = logging.getLogger(f'guild_{guild_id}')
+            logger.setLevel(logging.INFO)
+            guild_log_dir = os.path.join(GUILDS_DIR, guild_id)
+            os.makedirs(guild_log_dir, exist_ok=True)
+
+            file_handler = logging.FileHandler(os.path.join(guild_log_dir, "point_changes.log"))
+            formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+            file_handler.setFormatter(formatter)
+            logger.addHandler(file_handler)
+
+            self.loggers[guild_id] = logger
+
+    def get_logger_for_guild(self, guild_id: str) -> logging.Logger:
+        self.setup_logger_for_guild(guild_id)
+        return self.loggers[guild_id]
+
+    def log_change(self, guild_id: str, msg: str):
+        self.get_logger_for_guild(guild_id).info(msg)
 
 # Class BotImpl
 

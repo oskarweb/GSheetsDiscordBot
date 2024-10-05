@@ -9,9 +9,6 @@ from priority_sheet import PrioritySheet
 from bot import BotImpl
 import logging
 
-logger = logging.getLogger(__name__)
-logger.setLevel(logging.INFO)
-
 
 def assign_commands(bot: BotImpl):
     @bot.tree.command(name="set_sheet")
@@ -58,6 +55,18 @@ def assign_commands(bot: BotImpl):
     ):
         guild_id = str(interaction.guild.id)
         async with bot.locks[guild_id]:
+            names_set = set([name.lower() for name in participants.split(",")])
+            with PrioritySheet(
+                    bot.guilds_data[guild_id]["sheet"]["id"],
+                    bot.guilds_data[guild_id]["sheet"]["range_name"]
+            ) as p_sheet:
+                values = p_sheet.get_sheet_values()
+                invalid_names = set()
+                for name in names_set:
+                    if name not in [row[0].lower() for row in values]:
+                        invalid_names.add(name)
+                if invalid_names:
+                    return await interaction.response.send_message(f"Invalid names: {','.join(invalid_names)}", ephemeral=True)
             valid_screenshots = [img for img in [img1, img2, img3, img4] if img]
             if not bot.guilds_data[guild_id]["sheet"]:
                 return await interaction.response.send_message("Sheet not configured.", ephemeral=True)
@@ -122,7 +131,7 @@ def assign_commands(bot: BotImpl):
                     return await interaction.response.send_message("Something went wrong.", ephemeral=True)
                 try:
                     p_sheet.wb_update(names_values, float(bot.guilds_data[guild_id]["roles"]["scout"]), GAINED_ID)
-                    log_point_change(logger, guild_id, f"Added scout points: {names_values}")
+                    bot.log_change(guild_id, f"Added scout points: {names_values}")
                 except Exception:
                     return await interaction.response.send_message("Something went wrong.", ephemeral=True)
                 await interaction.response.send_message("Points updated.", ephemeral=True)
@@ -145,7 +154,7 @@ def assign_commands(bot: BotImpl):
                     return await interaction.response.send_message("Something went wrong.", ephemeral=True)
                 try:
                     p_sheet.wb_update(names_values, float(bot.guilds_data[guild_id]["roles"]["common"]), USED_ID)
-                    log_point_change(logger, guild_id, f"Used points common role: {names_values}")
+                    bot.log_change(guild_id, f"Used points common role: {names_values}")
                 except Exception:
                     return await interaction.response.send_message("Something went wrong.", ephemeral=True)
                 await interaction.response.send_message("Points updated.", ephemeral=True)

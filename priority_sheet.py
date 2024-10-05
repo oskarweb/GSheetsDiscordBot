@@ -13,18 +13,15 @@ class PrioritySheet(GSheet):
                 return row[0], row[3]
         return None
 
-    def update_priority_from_activity(self, names: str, activity: str):
-        names_set = set([name.lower() for name in names.split(",")])
+    def update_priority_from_activity(self, names: set, activity: str):
         updated_values = []
         for idx, row in enumerate(self.get_sheet_values()):
-            if row[0].lower() in names_set:
+            if row[0].lower() in names:
                 new_value = str(float(row[1]) + ACTIVITIES[activity])
                 updated_values.append({
                     'range': f"{self.sheet_range.split('!')[0]}!B{idx + 1}",
                     'values': [[new_value]]
                 })
-        if len(names_set) != len(updated_values):
-            raise ValueError("Invalid name.")
         try:
             self.update_values(updated_values)
         except Exception as err:
