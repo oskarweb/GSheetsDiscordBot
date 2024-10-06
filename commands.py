@@ -1,4 +1,5 @@
 import os
+import json
 
 import discord
 from discord.ext import commands
@@ -15,20 +16,19 @@ def assign_commands(bot: BotImpl):
     async def set_sheet(interaction: discord.Interaction, sheet_id: str, range_name: str):
         guild_id = str(interaction.guild.id)
         async with bot.locks[guild_id]:
+            if sheet_id in bot.locked_sheets:
+                return await interaction.response.send_message("Sheet already in use.", ephemeral=True)
             if not is_valid_sheet_id(sheet_id):
                 return await interaction.response.send_message("Invalid sheet ID", ephemeral=True)
-
             if not is_valid_range_name(range_name):
                 return await interaction.response.send_message("Invalid range", ephemeral=True)
 
             try:
-                with open(os.path.join(GUILDS_DIR, guild_id, SHEET_CACHE_FILE), "w", newline='') as sheet_cache:
-                    csvwriter = csv.writer(sheet_cache, delimiter=",")
-                    csvwriter.writerow([sheet_id, range_name])
-                    bot.guilds_data[guild_id]["sheet"] = {
-                        "id": sheet_id,
-                        "range_name": range_name
-                    }
+                with open(os.path.join(GUILDS_DIR, guild_id, SHEET_FILE), "w", newline='') as sheet_file:
+                    sheet_dict = {"sheet": {"id": sheet_id, "range_name": range_name}}
+                    json.dump(sheet_dict, sheet_file)
+                    bot.guilds_data[guild_id].update(sheet_dict)
+                    bot.lock_sheet(sheet_id)
                 await interaction.response.send_message("Google Sheets configuration saved successfully.", ephemeral=True)
             except Exception:
                 await interaction.response.send_message(f"An error occurred.", ephemeral=True)
@@ -38,10 +38,6 @@ def assign_commands(bot: BotImpl):
         participants="Comma separated list of participants, no spaces",
         activity="Activity name",
         img1="jpg or png"
-    )
-    @discord.app_commands.choices(activity=[
-        discord.app_commands.Choice(name=name, value=name) for name, value in ACTIVITIES.items()
-        ]
     )
     @discord.app_commands.checks.cooldown(1, 10)
     async def post_activity(
@@ -55,7 +51,12 @@ def assign_commands(bot: BotImpl):
     ):
         guild_id = str(interaction.guild.id)
         async with bot.locks[guild_id]:
+            if not bot.guilds_data[guild_id].get("sheet"):
+                return await interaction.response.send_message("Sheet not configured.", ephemeral=True)
+            if not bot.guilds_data[guild_id].get("activities"):
+                return await interaction.response.send_message("Activities not set.", ephemeral=True)
             names_set = set([name.lower() for name in participants.split(",")])
+
             with PrioritySheet(
                     bot.guilds_data[guild_id]["sheet"]["id"],
                     bot.guilds_data[guild_id]["sheet"]["range_name"]
@@ -67,9 +68,8 @@ def assign_commands(bot: BotImpl):
                         invalid_names.add(name)
                 if invalid_names:
                     return await interaction.response.send_message(f"Invalid names: {','.join(invalid_names)}", ephemeral=True)
+
             valid_screenshots = [img for img in [img1, img2, img3, img4] if img]
-            if not bot.guilds_data[guild_id]["sheet"]:
-                return await interaction.response.send_message("Sheet not configured.", ephemeral=True)
             for screenshot in valid_screenshots:
                 if screenshot.content_type not in ["image/jpeg", "image/png"]:
                     return await interaction.response.send_message("Invalid file type.", ephemeral=True)
@@ -95,7 +95,7 @@ def assign_commands(bot: BotImpl):
     @discord.app_commands.checks.cooldown(1, 5)
     async def fetch_points(interaction: discord.Interaction, member: str):
         guild_id = str(interaction.guild.id)
-        if not bot.guilds_data[guild_id]["sheet"]:
+        if not bot.guilds_data[guild_id].get("sheet"):
             return await interaction.response.send_message("Sheet not configured.", ephemeral=True)
         with PrioritySheet(
                 bot.guilds_data[guild_id]["sheet"]["id"],
@@ -109,8 +109,8 @@ def assign_commands(bot: BotImpl):
             try:
                 if nick_points := p_sheet.get_priority_from_nickname(nickname):
                     return await interaction.response.send_message(f"{nick_points[0]} has {nick_points[1]} points.", ephemeral=True)
-            except Exception:
-                return await interaction.response.send_message(f"Something went wrong.", ephemeral=True)
+            except Exception as err:
+                return await interaction.response.send_message(f"Something went wrong.{err}", ephemeral=True)
             await interaction.response.send_message(f"{nickname} not found.", ephemeral=True)
 
     @bot.tree.command(name="scouts")
@@ -121,7 +121,7 @@ def assign_commands(bot: BotImpl):
     async def add_scout(interaction: discord.Interaction, scouts_foods: str):
         guild_id = str(interaction.guild.id)
         async with bot.locks[guild_id]:
-            if not bot.guilds_data[guild_id]["sheet"]:
+            if not bot.guilds_data[guild_id].get("sheet"):
                 return await interaction.response.send_message("Sheet not configured.", ephemeral=True)
             with PrioritySheet(
                     bot.guilds_data[guild_id]["sheet"]["id"],
@@ -131,7 +131,7 @@ def assign_commands(bot: BotImpl):
                     return await interaction.response.send_message("Something went wrong.", ephemeral=True)
                 try:
                     p_sheet.wb_update(names_values, float(bot.guilds_data[guild_id]["roles"]["scout"]), GAINED_ID)
-                    bot.log_change(guild_id, f"Added scout points: {names_values}")
+                    bot.log_change(guild_id, f"{interaction.user.display_name} added scout points: {names_values}")
                 except Exception:
                     return await interaction.response.send_message("Something went wrong.", ephemeral=True)
                 await interaction.response.send_message("Points updated.", ephemeral=True)
@@ -144,7 +144,7 @@ def assign_commands(bot: BotImpl):
     async def use_common(interaction: discord.Interaction, members_foods: str):
         guild_id = str(interaction.guild.id)
         async with bot.locks[guild_id]:
-            if not bot.guilds_data[guild_id]["sheet"]:
+            if not bot.guilds_data[guild_id].get("sheet"):
                 return await interaction.response.send_message("Sheet not configured.", ephemeral=True)
             with PrioritySheet(
                     bot.guilds_data[guild_id]["sheet"]["id"],
@@ -154,13 +154,68 @@ def assign_commands(bot: BotImpl):
                     return await interaction.response.send_message("Something went wrong.", ephemeral=True)
                 try:
                     p_sheet.wb_update(names_values, float(bot.guilds_data[guild_id]["roles"]["common"]), USED_ID)
-                    bot.log_change(guild_id, f"Used points common role: {names_values}")
+                    bot.log_change(guild_id, f"{interaction.user.display_name} used points common role: {names_values}")
                 except Exception:
                     return await interaction.response.send_message("Something went wrong.", ephemeral=True)
                 await interaction.response.send_message("Points updated.", ephemeral=True)
 
+    @bot.tree.command(name="set_roles")
+    @discord.app_commands.describe(
+        roles_points="<Role1:Points,Role2:Points> etc."
+    )
+    async def set_roles(interaction: discord.Interaction, roles_points: str):
+        guild_id = str(interaction.guild.id)
+        async with bot.locks[guild_id]:
+            if not bot.guilds_data[guild_id].get("sheet"):
+                return await interaction.response.send_message("Sheet not configured.", ephemeral=True)
+            if not (roles_values := parse_names_values(roles_points)):
+                return await interaction.response.send_message("Something went wrong.", ephemeral=True)
+            try:
+                role_dict = {"roles": {role: points for role, points in roles_values}}
+                bot.guilds_data[guild_id].update(role_dict)
+                with open(os.path.join(GUILDS_DIR, guild_id, ROLES_FILE), "w") as roles_file:
+                    json.dump(role_dict, roles_file)
+                await interaction.response.send_message("Roles updated.", ephemeral=True)
+            except Exception:
+                await interaction.response.send_message("Something went wrong.", ephemeral=True)
+
+    @bot.tree.command(name="set_activities")
+    @discord.app_commands.describe(
+        activities_points="<Activity1:Points,Activity2:Points> etc."
+    )
+    async def set_activities(interaction: discord.Interaction, activities_points: str):
+        guild_id = str(interaction.guild.id)
+        async with bot.locks[guild_id]:
+            if not bot.guilds_data[guild_id].get("sheet"):
+                return await interaction.response.send_message("Sheet not configured.", ephemeral=True)
+            if not (activities_values := parse_names_values(activities_points)):
+                return await interaction.response.send_message("Something went wrong.", ephemeral=True)
+            try:
+                activity_dict = {"activities": {activity: points for activity, points in activities_values}}
+                bot.guilds_data[guild_id].update(activity_dict)
+                with open(os.path.join(GUILDS_DIR, guild_id, ACTIVITIES_FILE), "w") as activities_file:
+                    json.dump(activity_dict, activities_file)
+                await interaction.response.send_message("Activities updated.", ephemeral=True)
+            except Exception:
+                await interaction.response.send_message("Something went wrong.", ephemeral=True)
+
     @fetch_points.error
     @post_activity.error
+    @add_scout.error
+    @use_common.error
     async def on_cooldown_error(interaction: discord.Interaction, error: discord.app_commands.AppCommandError):
         if isinstance(error, discord.app_commands.CommandOnCooldown):
             await interaction.response.send_message(str(error), ephemeral=True)
+
+    @post_activity.autocomplete("activity")
+    async def activity_autocomplete(interaction: discord.Interaction, current: str):
+        guild_id = str(interaction.guild_id)
+
+        if activities := bot.guilds_data[guild_id].get("activities"):
+            return [
+                discord.app_commands.Choice(name=activity, value=activity)
+                for activity in activities.keys()
+                if current.lower() in activity.lower()
+            ]
+        else:
+            return []

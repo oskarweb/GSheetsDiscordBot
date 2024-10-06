@@ -13,11 +13,11 @@ class PrioritySheet(GSheet):
                 return row[0], row[3]
         return None
 
-    def update_priority_from_activity(self, names: set, activity: str):
+    def update_priority_from_activity(self, names: set, activity: float):
         updated_values = []
         for idx, row in enumerate(self.get_sheet_values()):
             if row[0].lower() in names:
-                new_value = str(float(row[1]) + ACTIVITIES[activity])
+                new_value = str(float(row[1]) + activity)
                 updated_values.append({
                     'range': f"{self.sheet_range.split('!')[0]}!B{idx + 1}",
                     'values': [[new_value]]

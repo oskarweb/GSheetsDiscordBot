@@ -161,6 +161,7 @@ token.json
 opencv_test.py
 sheettest.py
 test.py
+locked_sheets.csv
 
 # PyCharm
 #  JetBrains specific template is maintained in a separate JetBrains.gitignore that can

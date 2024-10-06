@@ -19,6 +19,7 @@ class BotImpl(commands.Bot):
         self.guilds_data: Dict[str, Dict] = {}
         self.locks: Dict[str, Lock] = {}
         self.loggers: Dict[str, logging.Logger] = {}
+        self.locked_sheets: set = set()
 
     async def setup_hook(self):
         await self.tree.sync()
@@ -47,10 +48,11 @@ class BotImpl(commands.Bot):
         guild_id = str(message.guild.id)
         members = set([name.lower() for name in message.embeds[0].author.name.split(",")])
         activity = message.embeds[0].footer.text
+        activity_points = self.guilds_data[guild_id]["activities"][activity]
         if str(emoji) == CHECK_MARK_EMOJI:
             try:
-                p_sheet.update_priority_from_activity(members, activity)
-                self.log_change(guild_id, f"Added {activity} points: {members}")
+                p_sheet.update_priority_from_activity(members, activity_points)
+                self.log_change(guild_id, f"activity post accepted: {activity} for: {members}")
             except ValueError as err:
                 return await self.get_channel(message.channel.id).send(f"{err}")
             except Exception:
@@ -84,21 +86,14 @@ class BotImpl(commands.Bot):
     def read_cache(self, guild_id: str):
         guild_dir = os.path.join(GUILDS_DIR, guild_id)
         self.guilds_data[guild_id] = {
-            "sheet": {},
             "activities_awaiting_approval": set(),
-            "roles": {}
         }
         try:
             os.makedirs(guild_dir, exist_ok=False)
         except Exception:
-            if os.path.exists(os.path.join(guild_dir, SHEET_CACHE_FILE)):
-                with open(os.path.join(guild_dir, SHEET_CACHE_FILE), "r", newline='', encoding="utf-8") as sheet_cache:
-                    csvreader = csv.reader(sheet_cache, delimiter=",")
-                    for sheet in csvreader:
-                        self.guilds_data[guild_id]["sheet"] = {
-                            "id": sheet[0],
-                            "range_name": sheet[1]
-                        }
+            if os.path.exists(os.path.join(guild_dir, SHEET_FILE)):
+                with open(os.path.join(guild_dir, SHEET_FILE), "r", newline='', encoding="utf-8") as sheet_file:
+                    self.guilds_data[guild_id].update(json.load(sheet_file))
             if os.path.exists(os.path.join(guild_dir, ACTIVITY_CACHE_FILE)):
                 with open(os.path.join(guild_dir, ACTIVITY_CACHE_FILE), "r", newline='', encoding="utf-8") as cached_activities:
                     posted_activities = csv.reader(cached_activities, delimiter=",")
@@ -108,6 +103,15 @@ class BotImpl(commands.Bot):
             if os.path.exists(os.path.join(guild_dir, ROLES_FILE)):
                 with open(os.path.join(guild_dir, ROLES_FILE), "r", encoding="utf-8") as roles_file:
                     self.guilds_data[guild_id].update(json.load(roles_file))
+            if os.path.exists(os.path.join(guild_dir, ACTIVITIES_FILE)):
+                with open(os.path.join(guild_dir, ACTIVITIES_FILE), "r", encoding="utf-8") as activities_file:
+                    self.guilds_data[guild_id].update(json.load(activities_file))
+            if os.path.exists(LOCKED_SHEETS):
+                with open(LOCKED_SHEETS, "r") as locked_sheets:
+                    locked_sheets = csv.reader(locked_sheets, delimiter=",")
+                    for sheet_id in locked_sheets:
+                        if len(sheet_id) > 0:
+                            self.locked_sheets.add(sheet_id[0])
 
     def setup_logger_for_guild(self, guild_id: str):
         if guild_id not in self.loggers:
@@ -129,6 +133,14 @@ class BotImpl(commands.Bot):
 
     def log_change(self, guild_id: str, msg: str):
         self.get_logger_for_guild(guild_id).info(msg)
+
+    def lock_sheet(self, sheet_id):
+        if sheet_id not in self.locked_sheets:
+            with open(LOCKED_SHEETS, "a") as cached_activities:
+                csvwriter = csv.writer(cached_activities, delimiter=",")
+                csvwriter.writerow([sheet_id])
+            return True
+        return False
 
 # Class BotImpl
 
