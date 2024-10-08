@@ -31,7 +31,7 @@ def assign_commands(bot: BotImpl):
     ):
         guild_id = str(interaction.guild.id)
         async with bot.locks[guild_id]:
-            await interaction.response.defer(ephemeral=True)
+            await interaction.response.defer(ephemeral=False)
             if not bot.guilds_data[guild_id]["sheet"].get("activities"):
                 return await interaction.followup.send("Activities not set.", ephemeral=True)
             names_set = set([name.lower() if not name.startswith("<@")

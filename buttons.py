@@ -29,8 +29,8 @@ class ActivityPostButtons(discord.ui.View):
             return
         async with self.bot.locks[guild_id]:
             if interaction.message.id in self.bot.guilds_data[guild_id]["activities_awaiting_approval"]:
-                await interaction.response.defer()
+                await interaction.response.defer(ephemeral=True)
                 participants = await self.bot.deny_posted_activity(interaction.message)
                 return await interaction.followup.send(
-                    f"Refused {interaction.message.embeds[0].footer.text} for {participants}"
+                    f"Refused {interaction.message.embeds[0].footer.text} for {participants}", ephemeral=True
                 )
