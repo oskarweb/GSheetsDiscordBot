@@ -166,7 +166,7 @@ class BotImpl(commands.Bot):
             return True
         return False
 
-    def write_sheet_file(self, interaction: discord.Interaction, guild_id: str, sheet_id: str, sheet_dict: dict):
+    async def write_sheet_file(self, interaction: discord.Interaction, guild_id: str, sheet_id: str, sheet_dict: dict):
         self.guilds_data[guild_id]["sheet"].update(sheet_dict)
         with open(os.path.join(GUILDS_DIR, guild_id, SHEET_FILE), "w") as sheet_file:
             file_data: dict = json.load(sheet_file)
