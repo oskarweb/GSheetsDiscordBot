@@ -8,7 +8,7 @@ from constants import *
 from util import *
 from priority_sheet import PrioritySheet
 from bot import BotImpl
-import logging
+from buttons import ActivityPostButtons
 
 
 def assign_commands(bot: BotImpl):
@@ -67,11 +67,11 @@ def assign_commands(bot: BotImpl):
                 e.set_image(url=screenshot.url)
                 e.set_footer(text=activity)
                 embeds.append(e)
-            await interaction.response.send_message(embeds=embeds)  # add embed
+            view = ActivityPostButtons()
+            view.set_bot(bot)
+            await interaction.response.send_message(embeds=embeds, view=view)  # add embed
 
             message = await interaction.original_response()
-            await message.add_reaction(CHECK_MARK_EMOJI)
-            await message.add_reaction(CROSS_MARK_EMOJI)
 
             cache_activity(guild_id, str(message.id))
             bot.guilds_data[guild_id]["activities_awaiting_approval"].add(message.id)
