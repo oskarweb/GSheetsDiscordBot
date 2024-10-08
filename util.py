@@ -6,6 +6,7 @@ import logging
 import discord
 
 from constants import *
+from priority_sheet import PrioritySheet
 
 
 def is_valid_sheet_id(sheet_id: str) -> bool:
@@ -47,4 +48,5 @@ def set_intents() -> discord.Intents:
     intents.reactions = True
     intents.members = True
     return intents
+
 

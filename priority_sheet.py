@@ -27,20 +27,17 @@ class PrioritySheet(GSheet):
         except Exception as err:
             raise RuntimeError(f"Failed to update spreadsheet: {err}")
 
-    def wb_update(self, names_values: list[tuple[str, float]], point_coefficient: float, value_id: dict):
-        updated_values = []
-        for name, foods in names_values:
-            for idx, row in enumerate(self.get_sheet_values()):
-                if row[0].lower() == name.lower():
-                    new_value = str(float(row[value_id['row']]) + (foods * point_coefficient))
-                    updated_values.append({
-                        'range': f"{self.sheet_name}!{value_id['column']}{idx + 1}",
-                        'values': [[new_value]]
-                    })
-        if not updated_values:
-            return None
-        try:
-            self.update_values(updated_values)
-        except Exception as err:
-            raise RuntimeError(f"Failed to update spreadsheet: {err}")
+    async def activity_update(self, act_type: str, names_values: list[tuple[str, float]], members_sheet, activities_sheet):
+        if names_values:
+            orig_sheet_id, orig_sheet_range = self.sheet_id, self.sheet_range
+            self.sheet_id, self.sheet_range = members_sheet['id'], members_sheet['range_name']
+            members = [row[0] for row in self.get_sheet_values()]
+            self.sheet_id, self.sheet_range = activities_sheet['id'], activities_sheet['range_name']
+            activities = [row[0] for row in self.get_sheet_values()]
+            self.sheet_id, self.sheet_range = orig_sheet_id, orig_sheet_range
 
+            prepared_values = [[name, act_type, value] for name, value in names_values]
+            result = self.append_values(prepared_values)
+            updates_range = result['updates']['updatedRange']
+            await self.add_dropdown(updates_range, members)
+            await self.add_dropdown(updates_range, activities, 1)

@@ -18,11 +18,26 @@ class BotImpl(commands.Bot):
         super().__init__(*args, **kwargs)
         self.guilds_data: Dict[str, Dict] = {}
         self.locks: Dict[str, Lock] = {}
+        self.global_lock = Lock()
         self.loggers: Dict[str, logging.Logger] = {}
         self.locked_sheets: set = set()
 
     async def setup_hook(self):
         await self.tree.sync()
+
+    async def load_activities(self, guild_id: str) -> list[str]:
+        with PrioritySheet(
+                self.guilds_data[guild_id]["sheet"]["activities"]["id"],
+                self.guilds_data[guild_id]["sheet"]["activities"]["range_name"]
+        ) as p_sheet:
+            return [row[0] for row in p_sheet.get_sheet_values()]
+
+    async def load_members(self, guild_id: str) -> list[str]:
+        with PrioritySheet(
+                self.guilds_data[guild_id]["sheet"]["members"]["id"],
+                self.guilds_data[guild_id]["sheet"]["members"]["range_name"]
+        ) as p_sheet:
+            return [row[0] for row in p_sheet.get_sheet_values()]
 
     async def on_raw_reaction_add(self, payload: discord.RawReactionActionEvent):
         guild_id = str(payload.guild_id)
@@ -33,8 +48,8 @@ class BotImpl(commands.Bot):
             if payload.message_id in self.guilds_data[guild_id]["activities_awaiting_approval"]:
                 try:
                     with PrioritySheet(
-                        self.guilds_data[guild_id]["sheet"]["id"],
-                        self.guilds_data[guild_id]["sheet"]["range_name"]
+                        self.guilds_data[guild_id]["sheet"]["activities_write"]["id"],
+                        self.guilds_data[guild_id]["sheet"]["activities_write"]["range_name"]
                     ) as p_sheet:
                         await self.handle_posted_activity(
                             await self.get_message(payload.channel_id, payload.message_id),
@@ -46,23 +61,31 @@ class BotImpl(commands.Bot):
 
     async def handle_posted_activity(self, message: discord.Message, emoji: discord.PartialEmoji, p_sheet: PrioritySheet):
         guild_id = str(message.guild.id)
-        members = set([name.lower() for name in message.embeds[0].author.name.split(",")])
+        participants = list()
+        for field in message.embeds[0].fields:
+            participants.extend(field.value.split(", "))
+        participants_str = ", ".join(participants)
         activity = message.embeds[0].footer.text
-        activity_points = self.guilds_data[guild_id]["activities"][activity]
+        names_values = [(name, 1) for name in participants]
         if str(emoji) == CHECK_MARK_EMOJI:
             try:
-                p_sheet.update_priority_from_activity(members, activity_points)
-                self.log_change(guild_id, f"activity post accepted: {activity} for: {members}")
+                await p_sheet.activity_update(
+                    activity,
+                    names_values,
+                    self.guilds_data[guild_id]["sheet"]["members"],
+                    self.guilds_data[guild_id]["sheet"]["activities"]
+                )
+                self.log_change(guild_id, f"activity post accepted: {activity} for: {participants}")
             except ValueError as err:
                 return await self.get_channel(message.channel.id).send(f"{err}")
             except Exception:
                 return await self.get_channel(message.channel.id).send("Something went wrong.")
             await self.get_channel(message.channel.id).send(
-                f"Accepted {message.embeds[0].footer.text} for {message.embeds[0].author.name}"
+                f"Accepted {message.embeds[0].footer.text} for {participants_str}"
             )
         elif str(emoji) == CROSS_MARK_EMOJI:
             await self.get_channel(message.channel.id).send(
-                f"Refused {message.embeds[0].footer.text} for {message.embeds[0].author.name}"
+                f"Refused {message.embeds[0].footer.text} for {participants_str}"
             )
 
         guild_id = str(message.guild.id)
@@ -87,13 +110,14 @@ class BotImpl(commands.Bot):
         guild_dir = os.path.join(GUILDS_DIR, guild_id)
         self.guilds_data[guild_id] = {
             "activities_awaiting_approval": set(),
+            "sheet": {}
         }
         try:
             os.makedirs(guild_dir, exist_ok=False)
         except Exception:
             if os.path.exists(os.path.join(guild_dir, SHEET_FILE)):
                 with open(os.path.join(guild_dir, SHEET_FILE), "r", newline='', encoding="utf-8") as sheet_file:
-                    self.guilds_data[guild_id].update(json.load(sheet_file))
+                    self.guilds_data[guild_id]["sheet"] = json.load(sheet_file)
             if os.path.exists(os.path.join(guild_dir, ACTIVITY_CACHE_FILE)):
                 with open(os.path.join(guild_dir, ACTIVITY_CACHE_FILE), "r", newline='', encoding="utf-8") as cached_activities:
                     posted_activities = csv.reader(cached_activities, delimiter=",")
@@ -103,9 +127,6 @@ class BotImpl(commands.Bot):
             if os.path.exists(os.path.join(guild_dir, ROLES_FILE)):
                 with open(os.path.join(guild_dir, ROLES_FILE), "r", encoding="utf-8") as roles_file:
                     self.guilds_data[guild_id].update(json.load(roles_file))
-            if os.path.exists(os.path.join(guild_dir, ACTIVITIES_FILE)):
-                with open(os.path.join(guild_dir, ACTIVITIES_FILE), "r", encoding="utf-8") as activities_file:
-                    self.guilds_data[guild_id].update(json.load(activities_file))
             if os.path.exists(LOCKED_SHEETS):
                 with open(LOCKED_SHEETS, "r") as locked_sheets:
                     locked_sheets = csv.reader(locked_sheets, delimiter=",")
@@ -136,8 +157,8 @@ class BotImpl(commands.Bot):
 
     def lock_sheet(self, sheet_id):
         if sheet_id not in self.locked_sheets:
-            with open(LOCKED_SHEETS, "a") as cached_activities:
-                csvwriter = csv.writer(cached_activities, delimiter=",")
+            with open(LOCKED_SHEETS, "a") as locked_sheets:
+                csvwriter = csv.writer(locked_sheets, delimiter=",")
                 csvwriter.writerow([sheet_id])
             return True
         return False

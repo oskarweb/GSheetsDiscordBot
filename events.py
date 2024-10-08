@@ -16,5 +16,4 @@ def assign_events(bot: BotImpl):
 
     @bot.event
     async def on_guild_join(guild):
-        async with bot.lock:
-            os.makedirs(os.path.join(GUILDS_DIR, str(guild.id)), exist_ok=True)
+        bot.read_cache(str(guild.id))

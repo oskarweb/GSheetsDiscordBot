@@ -12,30 +12,10 @@ import logging
 
 
 def assign_commands(bot: BotImpl):
-    @bot.tree.command(name="set_sheet")
-    async def set_sheet(interaction: discord.Interaction, sheet_id: str, range_name: str):
-        guild_id = str(interaction.guild.id)
-        async with bot.locks[guild_id]:
-            if sheet_id in bot.locked_sheets:
-                return await interaction.response.send_message("Sheet already in use.", ephemeral=True)
-            if not is_valid_sheet_id(sheet_id):
-                return await interaction.response.send_message("Invalid sheet ID", ephemeral=True)
-            if not is_valid_range_name(range_name):
-                return await interaction.response.send_message("Invalid range", ephemeral=True)
-
-            try:
-                with open(os.path.join(GUILDS_DIR, guild_id, SHEET_FILE), "w", newline='') as sheet_file:
-                    sheet_dict = {"sheet": {"id": sheet_id, "range_name": range_name}}
-                    json.dump(sheet_dict, sheet_file)
-                    bot.guilds_data[guild_id].update(sheet_dict)
-                    bot.lock_sheet(sheet_id)
-                await interaction.response.send_message("Google Sheets configuration saved successfully.", ephemeral=True)
-            except Exception:
-                await interaction.response.send_message(f"An error occurred.", ephemeral=True)
 
     @bot.tree.command(name="post_activity")
     @discord.app_commands.describe(
-        participants="Comma separated list of participants, no spaces",
+        participants="Comma separated list of participants(name or dc mention, case insensitive), no spaces",
         activity="Activity name",
         img1="jpg or png"
     )
@@ -51,23 +31,26 @@ def assign_commands(bot: BotImpl):
     ):
         guild_id = str(interaction.guild.id)
         async with bot.locks[guild_id]:
-            if not bot.guilds_data[guild_id].get("sheet"):
-                return await interaction.response.send_message("Sheet not configured.", ephemeral=True)
-            if not bot.guilds_data[guild_id].get("activities"):
+            if not bot.guilds_data[guild_id]["sheet"].get("activities"):
                 return await interaction.response.send_message("Activities not set.", ephemeral=True)
-            names_set = set([name.lower() for name in participants.split(",")])
+            names_set = set([name.lower() if not name.startswith("<@")
+                             else interaction.guild.get_member(int(name.strip("<@!>"))).display_name.lower()
+                             for name in participants.split(",")]
+                            )
 
-            with PrioritySheet(
-                    bot.guilds_data[guild_id]["sheet"]["id"],
-                    bot.guilds_data[guild_id]["sheet"]["range_name"]
-            ) as p_sheet:
-                values = p_sheet.get_sheet_values()
-                invalid_names = set()
-                for name in names_set:
-                    if name not in [row[0].lower() for row in values]:
-                        invalid_names.add(name)
-                if invalid_names:
-                    return await interaction.response.send_message(f"Invalid names: {','.join(invalid_names)}", ephemeral=True)
+            allowed_activities = [activity.lower() for activity in await bot.load_activities(guild_id)]
+            if activity.lower() not in allowed_activities:
+                return await interaction.response.send_message("Invalid activity.", ephemeral=True)
+            members = await bot.load_members(guild_id)
+            invalid_names = set()
+            names_list = list()
+
+            for member in members:
+                if member.lower() in names_set:
+                    names_list.append(member)
+                    names_set.remove(member.lower())
+            if names_set:
+                return await interaction.response.send_message(f"Invalid names: {','.join(invalid_names)}", ephemeral=True)
 
             valid_screenshots = [img for img in [img1, img2, img3, img4] if img]
             for screenshot in valid_screenshots:
@@ -78,7 +61,9 @@ def assign_commands(bot: BotImpl):
             embeds = []
             for screenshot in valid_screenshots:
                 e = discord.Embed(url="https://example.com")
-                e.set_author(name=participants)
+                for idx in range(0, len(names_list), 4):
+                    participant_str = ", ".join(names_list[idx:idx + 4])
+                    e.add_field(name="", value=participant_str, inline=False)
                 e.set_image(url=screenshot.url)
                 e.set_footer(text=activity)
                 embeds.append(e)
@@ -93,15 +78,17 @@ def assign_commands(bot: BotImpl):
 
     @bot.tree.command(name="points")
     @discord.app_commands.checks.cooldown(1, 5)
-    async def fetch_points(interaction: discord.Interaction, member: str):
+    async def fetch_points(interaction: discord.Interaction, member: str | None = None):
         guild_id = str(interaction.guild.id)
         if not bot.guilds_data[guild_id].get("sheet"):
             return await interaction.response.send_message("Sheet not configured.", ephemeral=True)
         with PrioritySheet(
-                bot.guilds_data[guild_id]["sheet"]["id"],
-                bot.guilds_data[guild_id]["sheet"]["range_name"]
+                bot.guilds_data[guild_id]["sheet"]["members"]["id"],
+                bot.guilds_data[guild_id]["sheet"]["members"]["range_name"]
         ) as p_sheet:
-            if member.startswith('<@'):
+            if not member:
+                nickname = interaction.user.display_name
+            elif member.startswith('<@'):
                 member_id = int(member.strip('<@!>'))
                 nickname = interaction.guild.get_member(member_id).display_name
             else:
@@ -113,7 +100,7 @@ def assign_commands(bot: BotImpl):
                 return await interaction.response.send_message(f"Something went wrong.{err}", ephemeral=True)
             await interaction.response.send_message(f"{nickname} not found.", ephemeral=True)
 
-    @bot.tree.command(name="scouts")
+    @bot.tree.command(name="add_scouts")
     @discord.app_commands.describe(
         scouts_foods="<Member1:Foods,Member2:Foods> etc."
     )
@@ -124,19 +111,19 @@ def assign_commands(bot: BotImpl):
             if not bot.guilds_data[guild_id].get("sheet"):
                 return await interaction.response.send_message("Sheet not configured.", ephemeral=True)
             with PrioritySheet(
-                    bot.guilds_data[guild_id]["sheet"]["id"],
-                    bot.guilds_data[guild_id]["sheet"]["range_name"]
+                    bot.guilds_data[guild_id]["sheet"]["members"]["id"],
+                    bot.guilds_data[guild_id]["sheet"]["members"]["range_name"]
             ) as p_sheet:
                 if not (names_values := parse_names_values(scouts_foods)):
                     return await interaction.response.send_message("Something went wrong.", ephemeral=True)
                 try:
-                    p_sheet.wb_update(names_values, float(bot.guilds_data[guild_id]["roles"]["scout"]), GAINED_ID)
+                    result = p_sheet.activity_update("Scouting", names_values)
                     bot.log_change(guild_id, f"{interaction.user.display_name} added scout points: {names_values}")
                 except Exception:
                     return await interaction.response.send_message("Something went wrong.", ephemeral=True)
                 await interaction.response.send_message("Points updated.", ephemeral=True)
 
-    @bot.tree.command(name="common_roles")
+    @bot.tree.command(name="add_wb_done")
     @discord.app_commands.describe(
         members_foods="<Member1:Foods,Member2:Foods> etc."
     )
@@ -147,8 +134,8 @@ def assign_commands(bot: BotImpl):
             if not bot.guilds_data[guild_id].get("sheet"):
                 return await interaction.response.send_message("Sheet not configured.", ephemeral=True)
             with PrioritySheet(
-                    bot.guilds_data[guild_id]["sheet"]["id"],
-                    bot.guilds_data[guild_id]["sheet"]["range_name"]
+                    bot.guilds_data[guild_id]["sheet"]["members"]["id"],
+                    bot.guilds_data[guild_id]["sheet"]["members"]["range_name"]
             ) as p_sheet:
                 if not (names_values := parse_names_values(members_foods)):
                     return await interaction.response.send_message("Something went wrong.", ephemeral=True)
@@ -179,25 +166,51 @@ def assign_commands(bot: BotImpl):
             except Exception:
                 await interaction.response.send_message("Something went wrong.", ephemeral=True)
 
-    @bot.tree.command(name="set_activities")
+    @bot.tree.command(name="set_activity_load")
     @discord.app_commands.describe(
-        activities_points="<Activity1:Points,Activity2:Points> etc."
+        sheet_id="Sheet ID",
+        range_name="Range name"
     )
-    async def set_activities(interaction: discord.Interaction, activities_points: str):
+    async def set_activity_load(interaction: discord.Interaction, sheet_id: str, range_name: str):
         guild_id = str(interaction.guild.id)
         async with bot.locks[guild_id]:
-            if not bot.guilds_data[guild_id].get("sheet"):
-                return await interaction.response.send_message("Sheet not configured.", ephemeral=True)
-            if not (activities_values := parse_names_values(activities_points)):
-                return await interaction.response.send_message("Something went wrong.", ephemeral=True)
-            try:
-                activity_dict = {"activities": {activity: points for activity, points in activities_values}}
-                bot.guilds_data[guild_id].update(activity_dict)
-                with open(os.path.join(GUILDS_DIR, guild_id, ACTIVITIES_FILE), "w") as activities_file:
-                    json.dump(activity_dict, activities_file)
-                await interaction.response.send_message("Activities updated.", ephemeral=True)
-            except Exception:
-                await interaction.response.send_message("Something went wrong.", ephemeral=True)
+            if not is_valid_range_name(range_name):
+                return await interaction.response.send_message("Invalid range", ephemeral=True)
+            if not is_valid_sheet_id(sheet_id):
+                return await interaction.response.send_message("Invalid sheet id", ephemeral=True)
+
+            sheet_dict = {"activities": {"id": sheet_id, "range_name": range_name}}
+            bot.guilds_data[guild_id]["sheet"].update(sheet_dict)
+            with open(os.path.join(GUILDS_DIR, guild_id, SHEET_FILE), "w") as sheet_file:
+                file_data: dict = json.load(sheet_file)
+                sheets_ids = [sheet["id"] for sheet in file_data.values()]
+                if sheet_id in bot.locked_sheets and sheet_id not in sheets_ids:
+                    return await interaction.response.send_message("Sheet already in use.", ephemeral=True)
+                file_data.update(sheet_dict)
+                sheet_file.seek(0)
+                json.dump(file_data, sheet_file)
+            return await interaction.response.send_message("Activities load destination set.", ephemeral=True)
+
+    @bot.tree.command(name="set_members_load")
+    async def set_members_load(interaction: discord.Interaction, sheet_id: str, range_name: str):
+        guild_id = str(interaction.guild.id)
+        async with bot.locks[guild_id]:
+            if not is_valid_sheet_id(sheet_id):
+                return await interaction.response.send_message("Invalid sheet ID", ephemeral=True)
+            if not is_valid_range_name(range_name):
+                return await interaction.response.send_message("Invalid range", ephemeral=True)
+
+            sheet_dict = {"members": {"id": sheet_id, "range_name": range_name}}
+            bot.guilds_data[guild_id]["sheet"].update(sheet_dict)
+            with open(os.path.join(GUILDS_DIR, guild_id, SHEET_FILE), "w") as sheet_file:
+                file_data: dict = json.load(sheet_file)
+                sheets_ids = [sheet["id"] for sheet in file_data.values()]
+                if sheet_id in bot.locked_sheets and sheet_id not in sheets_ids:
+                    return await interaction.response.send_message("Sheet already in use.", ephemeral=True)
+                file_data.update(sheet_dict)
+                sheet_file.seek(0)
+                json.dump(file_data, sheet_file)
+            return await interaction.response.send_message("Members load destination set.", ephemeral=True)
 
     @fetch_points.error
     @post_activity.error
@@ -210,12 +223,14 @@ def assign_commands(bot: BotImpl):
     @post_activity.autocomplete("activity")
     async def activity_autocomplete(interaction: discord.Interaction, current: str):
         guild_id = str(interaction.guild_id)
-
-        if activities := bot.guilds_data[guild_id].get("activities"):
+        if not bot.guilds_data[guild_id]["sheet"].get("activities"):
+            return []
+        if activities := await bot.load_activities(guild_id):
             return [
                 discord.app_commands.Choice(name=activity, value=activity)
-                for activity in activities.keys()
+                for activity in activities
                 if current.lower() in activity.lower()
             ]
         else:
             return []
+
