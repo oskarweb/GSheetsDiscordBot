@@ -80,9 +80,10 @@ def assign_commands(bot: BotImpl):
     @bot.tree.command(name="points")
     @discord.app_commands.checks.cooldown(1, 5)
     async def fetch_points(interaction: discord.Interaction, member: str | None = None):
+        await interaction.response.defer(ephemeral=True)
         guild_id = str(interaction.guild.id)
-        if not bot.guilds_data[guild_id].get("sheet"):
-            return await interaction.response.send_message("Sheet not configured.", ephemeral=True)
+        if not bot.guilds_data[guild_id]["sheet"].get("members"):
+            return await interaction.followup.send("Sheet not configured.", ephemeral=True)
         with PrioritySheet(
                 bot.guilds_data[guild_id]["sheet"]["members"]["id"],
                 bot.guilds_data[guild_id]["sheet"]["members"]["range_name"]
@@ -96,10 +97,10 @@ def assign_commands(bot: BotImpl):
                 nickname = member
             try:
                 if nick_points := p_sheet.get_priority_from_nickname(nickname):
-                    return await interaction.response.send_message(f"{nick_points[0]} has {nick_points[1]} points.", ephemeral=True)
-            except Exception as err:
-                return await interaction.response.send_message(f"Something went wrong.{err}", ephemeral=True)
-            await interaction.response.send_message(f"{nickname} not found.", ephemeral=True)
+                    return await interaction.followup.send(f"{nick_points[0]} has {nick_points[1]} points.", ephemeral=True)
+            except Exception:
+                return await interaction.followup.send(f"Something went wrong.", ephemeral=True)
+            await interaction.followup.send(f"{nickname} not found.", ephemeral=True)
 
     @bot.tree.command(name="add_scouts")
     @discord.app_commands.describe(
@@ -175,43 +176,43 @@ def assign_commands(bot: BotImpl):
     async def set_activity_load(interaction: discord.Interaction, sheet_id: str, range_name: str):
         guild_id = str(interaction.guild.id)
         async with bot.locks[guild_id]:
+            await interaction.response.defer()
             if not is_valid_range_name(range_name):
-                return await interaction.response.send_message("Invalid range", ephemeral=True)
+                return await interaction.followup.send("Invalid range", ephemeral=True)
             if not is_valid_sheet_id(sheet_id):
-                return await interaction.response.send_message("Invalid sheet id", ephemeral=True)
+                return await interaction.followup.send("Invalid sheet id", ephemeral=True)
 
             sheet_dict = {"activities": {"id": sheet_id, "range_name": range_name}}
-            bot.guilds_data[guild_id]["sheet"].update(sheet_dict)
-            with open(os.path.join(GUILDS_DIR, guild_id, SHEET_FILE), "w") as sheet_file:
-                file_data: dict = json.load(sheet_file)
-                sheets_ids = [sheet["id"] for sheet in file_data.values()]
-                if sheet_id in bot.locked_sheets and sheet_id not in sheets_ids:
-                    return await interaction.response.send_message("Sheet already in use.", ephemeral=True)
-                file_data.update(sheet_dict)
-                sheet_file.seek(0)
-                json.dump(file_data, sheet_file)
-            return await interaction.response.send_message("Activities load destination set.", ephemeral=True)
+            bot.write_sheet_file(interaction, guild_id, sheet_id, sheet_dict)
+            return await interaction.followup.send("Activities load destination set.", ephemeral=True)
 
     @bot.tree.command(name="set_members_load")
     async def set_members_load(interaction: discord.Interaction, sheet_id: str, range_name: str):
         guild_id = str(interaction.guild.id)
         async with bot.locks[guild_id]:
+            await interaction.response.defer()
             if not is_valid_sheet_id(sheet_id):
-                return await interaction.response.send_message("Invalid sheet ID", ephemeral=True)
+                return await interaction.followup.send("Invalid sheet ID", ephemeral=True)
             if not is_valid_range_name(range_name):
-                return await interaction.response.send_message("Invalid range", ephemeral=True)
+                return await interaction.followup.send("Invalid range", ephemeral=True)
 
             sheet_dict = {"members": {"id": sheet_id, "range_name": range_name}}
-            bot.guilds_data[guild_id]["sheet"].update(sheet_dict)
-            with open(os.path.join(GUILDS_DIR, guild_id, SHEET_FILE), "w") as sheet_file:
-                file_data: dict = json.load(sheet_file)
-                sheets_ids = [sheet["id"] for sheet in file_data.values()]
-                if sheet_id in bot.locked_sheets and sheet_id not in sheets_ids:
-                    return await interaction.response.send_message("Sheet already in use.", ephemeral=True)
-                file_data.update(sheet_dict)
-                sheet_file.seek(0)
-                json.dump(file_data, sheet_file)
-            return await interaction.response.send_message("Members load destination set.", ephemeral=True)
+            bot.write_sheet_file(interaction, guild_id, sheet_id, sheet_dict)
+            return await interaction.followup.send("Members load destination set.", ephemeral=True)
+
+    @bot.tree.command(name="set_activity_write")
+    async def set_activity_write(interaction: discord.Interaction, sheet_id: str, range_name: str):
+        guild_id = str(interaction.guild.id)
+        async with bot.locks[guild_id]:
+            await interaction.response.defer()
+            if not is_valid_sheet_id(sheet_id):
+                return await interaction.followup.send("Invalid sheet ID", ephemeral=True)
+            if not is_valid_range_name(range_name):
+                return await interaction.followup.send("Invalid range", ephemeral=True)
+
+            sheet_dict = {"activities_write": {"id": sheet_id, "range_name": range_name}}
+            bot.write_sheet_file(interaction, guild_id, sheet_id, sheet_dict)
+            return await interaction.followup.send("Activities write destination set.", ephemeral=True)
 
     @fetch_points.error
     @post_activity.error

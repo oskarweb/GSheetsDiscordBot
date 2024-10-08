@@ -166,5 +166,16 @@ class BotImpl(commands.Bot):
             return True
         return False
 
+    def write_sheet_file(self, interaction: discord.Interaction, guild_id: str, sheet_id: str, sheet_dict: dict):
+        self.guilds_data[guild_id]["sheet"].update(sheet_dict)
+        with open(os.path.join(GUILDS_DIR, guild_id, SHEET_FILE), "w") as sheet_file:
+            file_data: dict = json.load(sheet_file)
+            sheets_ids = [sheet["id"] for sheet in file_data.values()]
+            if sheet_id in self.locked_sheets and sheet_id not in sheets_ids:
+                return await interaction.followup.send("Sheet already in use.", ephemeral=True)
+            file_data.update(sheet_dict)
+            sheet_file.seek(0)
+            json.dump(file_data, sheet_file)
+
 # Class BotImpl
 
