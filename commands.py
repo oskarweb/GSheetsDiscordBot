@@ -31,6 +31,7 @@ def assign_commands(bot: BotImpl):
     ):
         guild_id = str(interaction.guild.id)
         async with bot.locks[guild_id]:
+            await interaction.response.defer(ephemeral=False)
             if not bot.guilds_data[guild_id]["sheet"].get("activities"):
                 return await interaction.response.send_message("Activities not set.", ephemeral=True)
             names_set = set([name.lower() if not name.startswith("<@")
@@ -50,12 +51,12 @@ def assign_commands(bot: BotImpl):
                     names_list.append(member)
                     names_set.remove(member.lower())
             if names_set:
-                return await interaction.response.send_message(f"Invalid names: {','.join(invalid_names)}", ephemeral=True)
+                return await interaction.followup.send(f"Invalid names: {','.join(invalid_names)}", ephemeral=True)
 
             valid_screenshots = [img for img in [img1, img2, img3, img4] if img]
             for screenshot in valid_screenshots:
                 if screenshot.content_type not in ["image/jpeg", "image/png"]:
-                    return await interaction.response.send_message("Invalid file type.", ephemeral=True)
+                    return await interaction.followup.send("Invalid file type.", ephemeral=True)
             guild_id = str(interaction.guild.id)
 
             embeds = []
@@ -69,7 +70,7 @@ def assign_commands(bot: BotImpl):
                 embeds.append(e)
             view = ActivityPostButtons()
             view.set_bot(bot)
-            await interaction.response.send_message(embeds=embeds, view=view)  # add embed
+            await interaction.followup.send(embeds=embeds, view=view, ephemeral=False)  # add embed
 
             message = await interaction.original_response()
 

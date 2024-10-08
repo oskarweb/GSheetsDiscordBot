@@ -16,8 +16,11 @@ class ActivityPostButtons(discord.ui.View):
             return
         async with self.bot.locks[guild_id]:
             if interaction.message.id in self.bot.guilds_data[guild_id]["activities_awaiting_approval"]:
-                await interaction.response.defer()
-                return await self.bot.accept_posted_activity(interaction.message)
+                await interaction.response.defer(ephemeral=True)
+                participants = await self.bot.accept_posted_activity(interaction.message)
+                return await interaction.followup.send(
+                    f"Accepted {interaction.message.embeds[0].footer.text} for {participants}", ephemeral=True
+                )
 
     @discord.ui.button(label="Deny", style=discord.ButtonStyle.red, custom_id="deny_button")
     async def deny_button(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -27,4 +30,7 @@ class ActivityPostButtons(discord.ui.View):
         async with self.bot.locks[guild_id]:
             if interaction.message.id in self.bot.guilds_data[guild_id]["activities_awaiting_approval"]:
                 await interaction.response.defer()
-                return await self.bot.deny_posted_activity(interaction.message)
+                participants = await self.bot.deny_posted_activity(interaction.message)
+                return await interaction.followup.send(
+                    f"Refused {interaction.message.embeds[0].footer.text} for {participants}"
+                )

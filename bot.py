@@ -55,25 +55,18 @@ class BotImpl(commands.Bot):
         participants_str = ", ".join(participants)
         activity = message.embeds[0].footer.text
         names_values = [(name, 1) for name in participants]
-        try:
-            with PrioritySheet(
+        with PrioritySheet(
                 self.guilds_data[guild_id]["sheet"]["activities_write"]["id"],
                 self.guilds_data[guild_id]["sheet"]["activities_write"]["range_name"]
-            ) as p_sheet:
-                await p_sheet.activity_update(
-                    activity,
-                    names_values,
-                    self.guilds_data[guild_id]["sheet"]["members"],
-                    self.guilds_data[guild_id]["sheet"]["activities"]
-                )
-                self.log_change(guild_id, f"activity post accepted: {activity} for: {participants}")
-        except ValueError as err:
-            return await self.get_channel(message.channel.id).send(f"{err}")
-        except Exception:
-            return await self.get_channel(message.channel.id).send("Something went wrong.")
-        await self.get_channel(message.channel.id).send(
-            f"Accepted {message.embeds[0].footer.text} for {participants_str}"
-        )
+        ) as p_sheet:
+            await p_sheet.activity_update(
+                activity,
+                names_values,
+                self.guilds_data[guild_id]["sheet"]["members"],
+                self.guilds_data[guild_id]["sheet"]["activities"]
+            )
+            self.log_change(guild_id, f"activity post accepted: {activity} for: {participants}")
+
         guild_dir = os.path.join(GUILDS_DIR, guild_id)
         with open(os.path.join(guild_dir, ACTIVITY_CACHE_FILE), "r", newline='') as cached_activities, \
                 open(os.path.join(guild_dir, ACTIVITY_CACHE_FILE + ".temp"), "w", newline='') as temp_activities:
@@ -85,6 +78,7 @@ class BotImpl(commands.Bot):
         os.replace(os.path.join(guild_dir, ACTIVITY_CACHE_FILE + ".temp"), os.path.join(guild_dir, ACTIVITY_CACHE_FILE))
         self.guilds_data[guild_id]["activities_awaiting_approval"].remove(message.id)
         await message.delete()
+        return participants_str
 
     async def deny_posted_activity(self, message: discord.Message):
         guild_id = str(message.guild.id)
@@ -93,10 +87,6 @@ class BotImpl(commands.Bot):
         for field in message.embeds[0].fields:
             participants.extend(field.value.split(", "))
         participants_str = ", ".join(participants)
-
-        await self.get_channel(message.channel.id).send(
-            f"Refused {message.embeds[0].footer.text} for {participants_str}"
-        )
 
         with open(os.path.join(guild_dir, ACTIVITY_CACHE_FILE), "r", newline='') as cached_activities,\
                 open(os.path.join(guild_dir, ACTIVITY_CACHE_FILE+".temp"), "w", newline='') as temp_activities:
@@ -108,6 +98,7 @@ class BotImpl(commands.Bot):
         os.replace(os.path.join(guild_dir, ACTIVITY_CACHE_FILE+".temp"), os.path.join(guild_dir, ACTIVITY_CACHE_FILE))
         self.guilds_data[guild_id]["activities_awaiting_approval"].remove(message.id)
         await message.delete()
+        return participants_str
 
     async def get_message(self, channel_id: int, message_id: int):
         channel = await self.fetch_channel(channel_id)
