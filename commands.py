@@ -33,7 +33,7 @@ def assign_commands(bot: BotImpl):
         async with bot.locks[guild_id]:
             await interaction.response.defer(ephemeral=False)
             if not bot.guilds_data[guild_id]["sheet"].get("activities"):
-                return await interaction.response.send_message("Activities not set.", ephemeral=True)
+                return await interaction.followup.send("Activities not set.", ephemeral=True)
             names_set = set([name.lower() if not name.startswith("<@")
                              else interaction.guild.get_member(int(name.strip("<@!>"))).display_name.lower()
                              for name in participants.split(",")]
@@ -41,7 +41,7 @@ def assign_commands(bot: BotImpl):
 
             allowed_activities = [activity.lower() for activity in await bot.load_activities(guild_id)]
             if activity.lower() not in allowed_activities:
-                return await interaction.response.send_message("Invalid activity.", ephemeral=True)
+                return await interaction.followup.send("Invalid activity.", ephemeral=True)
             members = await bot.load_members(guild_id)
             invalid_names = set()
             names_list = list()
