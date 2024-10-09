@@ -130,6 +130,9 @@ class BotImpl(commands.Bot):
             if os.path.exists(os.path.join(guild_dir, ROLES_FILE)):
                 with open(os.path.join(guild_dir, ROLES_FILE), "r", encoding="utf-8") as roles_file:
                     self.guilds_data[guild_id].update(json.load(roles_file))
+            if os.path.exists(os.path.join(guild_dir, PERMISSIONS_FILE)):
+                with open(os.path.join(guild_dir, PERMISSIONS_FILE), "r", encoding="utf-8") as permissions_file:
+                    self.guilds_data[guild_id].update(json.load(permissions_file))
             if os.path.exists(LOCKED_SHEETS):
                 with open(LOCKED_SHEETS, "r") as locked_sheets:
                     locked_sheets = csv.reader(locked_sheets, delimiter=",")

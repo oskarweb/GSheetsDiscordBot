@@ -1,5 +1,6 @@
 import os
 import json
+import re
 
 import discord
 from discord.ext import commands
@@ -34,11 +35,10 @@ def assign_commands(bot: BotImpl):
             await interaction.response.defer(ephemeral=False)
             if not bot.guilds_data[guild_id]["sheet"].get("activities"):
                 return await interaction.followup.send("Activities not set.", ephemeral=True)
-            names_set = set([name.lower() if not name.startswith("<@")
-                             else interaction.guild.get_member(int(name.strip("<@!>"))).display_name.lower()
-                             for name in participants.split(",")]
-                            )
-
+            names_set = {name.lower() if not name.startswith("<@")
+                         else interaction.guild.get_member(int(name.strip("<@!>"))).display_name.lower()
+                         for name in re.split(r'[\s`\-=~#$%^&*()_+\[\]{};\'\\:"|,./?"]', participants)}
+            names_set = {name for name in names_set if name}
             allowed_activities = [activity.lower() for activity in await bot.load_activities(guild_id)]
             if activity.lower() not in allowed_activities:
                 return await interaction.followup.send("Invalid activity.", ephemeral=True)
@@ -183,7 +183,7 @@ def assign_commands(bot: BotImpl):
                 return await interaction.followup.send("Invalid sheet id", ephemeral=True)
 
             sheet_dict = {"activities": {"id": sheet_id, "range_name": range_name}}
-            bot.write_sheet_file(interaction, guild_id, sheet_id, sheet_dict)
+            await bot.write_sheet_file(interaction, guild_id, sheet_id, sheet_dict)
             return await interaction.followup.send("Activities load destination set.", ephemeral=True)
 
     @bot.tree.command(name="set_members_load")
@@ -197,7 +197,7 @@ def assign_commands(bot: BotImpl):
                 return await interaction.followup.send("Invalid range", ephemeral=True)
 
             sheet_dict = {"members": {"id": sheet_id, "range_name": range_name}}
-            bot.write_sheet_file(interaction, guild_id, sheet_id, sheet_dict)
+            await bot.write_sheet_file(interaction, guild_id, sheet_id, sheet_dict)
             return await interaction.followup.send("Members load destination set.", ephemeral=True)
 
     @bot.tree.command(name="set_activity_write")
@@ -211,8 +211,22 @@ def assign_commands(bot: BotImpl):
                 return await interaction.followup.send("Invalid range", ephemeral=True)
 
             sheet_dict = {"activities_write": {"id": sheet_id, "range_name": range_name}}
-            bot.write_sheet_file(interaction, guild_id, sheet_id, sheet_dict)
+            await bot.write_sheet_file(interaction, guild_id, sheet_id, sheet_dict)
             return await interaction.followup.send("Activities write destination set.", ephemeral=True)
+
+    @bot.tree.command(name="set_activity_mod")
+    async def set_activity_mod(interaction: discord.Interaction, role: discord.Role):
+        guild_id = str(interaction.guild.id)
+        async with bot.locks[guild_id]:
+            await interaction.response.defer()
+            permissions_dict = {"activity_mod": role.id}
+            bot.guilds_data[guild_id]["roles"].update(permissions_dict)
+            with open(os.path.join(GUILDS_DIR, guild_id, PERMISSIONS_FILE), "w") as permissions_file:
+                file_data: dict = json.load(permissions_file)
+                file_data.update(permissions_dict)
+                permissions_file.seek(0)
+                json.dump(file_data, permissions_file)
+            return await interaction.followup.send("Activity mod role set.", ephemeral=True)
 
     @fetch_points.error
     @post_activity.error

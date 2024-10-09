@@ -10,6 +10,7 @@ MEMBERS_FILE = "members.json"
 SERVICE_ACCOUNT_FILE = "credentials.json"
 LOG_FILE = "log.txt"
 LOCKED_SHEETS = "locked_sheets.csv"
+PERMISSIONS_FILE = "permissions.json"
 
 USED_ID = {"column": "C", "row": 2}
 GAINED_ID = {"column": "B", "row": 1}

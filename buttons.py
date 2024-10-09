@@ -14,6 +14,8 @@ class ActivityPostButtons(discord.ui.View):
         guild_id = str(interaction.guild_id)
         if self.bot is None:
             return
+        if ACTIVITY_HANDLER not in interaction.user.roles:
+            return
         async with self.bot.locks[guild_id]:
             if interaction.message.id in self.bot.guilds_data[guild_id]["activities_awaiting_approval"]:
                 await interaction.response.defer(ephemeral=True)
@@ -26,6 +28,8 @@ class ActivityPostButtons(discord.ui.View):
     async def deny_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         guild_id = str(interaction.guild_id)
         if self.bot is None:
+            return
+        if ACTIVITY_HANDLER not in interaction.user.roles:
             return
         async with self.bot.locks[guild_id]:
             if interaction.message.id in self.bot.guilds_data[guild_id]["activities_awaiting_approval"]:
