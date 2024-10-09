@@ -219,13 +219,19 @@ def assign_commands(bot: BotImpl):
         guild_id = str(interaction.guild.id)
         async with bot.locks[guild_id]:
             await interaction.response.defer()
+            file_data = {}
             permissions_dict = {"activity_mod": role.id}
-            bot.guilds_data[guild_id]["roles"].update(permissions_dict)
-            with open(os.path.join(GUILDS_DIR, guild_id, PERMISSIONS_FILE), "w") as permissions_file:
-                file_data: dict = json.load(permissions_file)
+            bot.guilds_data[guild_id]["permissions"].update(permissions_dict)
+            try:
+                with open(os.path.join(GUILDS_DIR, guild_id, PERMISSIONS_FILE), "r") as permissions_file:
+                    file_data: dict = json.load(permissions_file)
+            except Exception:
+                file_data = permissions_dict
+            else:
                 file_data.update(permissions_dict)
-                permissions_file.seek(0)
-                json.dump(file_data, permissions_file)
+            finally:
+                with open(os.path.join(GUILDS_DIR, guild_id, PERMISSIONS_FILE), "w") as permissions_file:
+                    json.dump(file_data, permissions_file)
             return await interaction.followup.send("Activity mod role set.", ephemeral=True)
 
     @fetch_points.error

@@ -109,14 +109,15 @@ class BotImpl(commands.Bot):
         guild_dir = os.path.join(GUILDS_DIR, guild_id)
         self.guilds_data[guild_id] = {
             "activities_awaiting_approval": set(),
-            "sheet": {}
+            "sheet": {},
+            "permissions": {}
         }
         try:
             os.makedirs(guild_dir, exist_ok=False)
         except Exception:
             if os.path.exists(os.path.join(guild_dir, SHEET_FILE)):
                 with open(os.path.join(guild_dir, SHEET_FILE), "r", newline='', encoding="utf-8") as sheet_file:
-                    self.guilds_data[guild_id]["sheet"] = json.load(sheet_file)
+                    self.guilds_data[guild_id]["sheet"].update(json.load(sheet_file))
             if os.path.exists(os.path.join(guild_dir, ACTIVITY_CACHE_FILE)):
                 with open(os.path.join(guild_dir, ACTIVITY_CACHE_FILE), "r", newline='', encoding="utf-8") as cached_activities:
                     posted_activities = csv.reader(cached_activities, delimiter=",")
@@ -132,7 +133,7 @@ class BotImpl(commands.Bot):
                     self.guilds_data[guild_id].update(json.load(roles_file))
             if os.path.exists(os.path.join(guild_dir, PERMISSIONS_FILE)):
                 with open(os.path.join(guild_dir, PERMISSIONS_FILE), "r", encoding="utf-8") as permissions_file:
-                    self.guilds_data[guild_id].update(json.load(permissions_file))
+                    self.guilds_data[guild_id]["permissions"].update(json.load(permissions_file))
             if os.path.exists(LOCKED_SHEETS):
                 with open(LOCKED_SHEETS, "r") as locked_sheets:
                     locked_sheets = csv.reader(locked_sheets, delimiter=",")
@@ -171,14 +172,21 @@ class BotImpl(commands.Bot):
 
     async def write_sheet_file(self, interaction: discord.Interaction, guild_id: str, sheet_id: str, sheet_dict: dict):
         self.guilds_data[guild_id]["sheet"].update(sheet_dict)
-        with open(os.path.join(GUILDS_DIR, guild_id, SHEET_FILE), "w") as sheet_file:
-            file_data: dict = json.load(sheet_file)
-            sheets_ids = [sheet["id"] for sheet in file_data.values()]
-            if sheet_id in self.locked_sheets and sheet_id not in sheets_ids:
-                return await interaction.followup.send("Sheet already in use.", ephemeral=True)
+        file_data = {}
+        try:
+            with open(os.path.join(GUILDS_DIR, guild_id, SHEET_FILE), "r") as sheet_file:
+                file_data = json.load(sheet_file)
+        except FileNotFoundError:
+            file_data = {}
+        else:
+            if len(file_data) != 0:
+                sheets_ids = [sheet["id"] for sheet in file_data.values()]
+                if sheet_id in self.locked_sheets and sheet_id not in sheets_ids:
+                    return await interaction.followup.send("Sheet already in use.", ephemeral=True)
+        finally:
             file_data.update(sheet_dict)
-            sheet_file.seek(0)
-            json.dump(file_data, sheet_file)
+            with open(os.path.join(GUILDS_DIR, guild_id, SHEET_FILE), "w") as sheet_file:
+                json.dump(file_data, sheet_file)
 
 # Class BotImpl
 
