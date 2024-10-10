@@ -18,7 +18,8 @@ def assign_commands(bot: BotImpl):
     @discord.app_commands.describe(
         participants="Comma separated list of participants(name or dc mention, case insensitive), no spaces",
         activity="Activity name",
-        img1="jpg or png"
+        img1="jpg or png",
+        amount="1-9"
     )
     @discord.app_commands.checks.cooldown(1, 10)
     async def post_activity(
@@ -28,13 +29,16 @@ def assign_commands(bot: BotImpl):
             img1: discord.Attachment,
             img2: discord.Attachment = None,
             img3: discord.Attachment = None,
-            img4: discord.Attachment = None
+            img4: discord.Attachment = None,
+            amount: int = 1
     ):
         guild_id = str(interaction.guild.id)
         async with bot.locks[guild_id]:
             await interaction.response.defer(ephemeral=False)
             if not bot.guilds_data[guild_id]["sheet"].get("activities"):
                 return await interaction.followup.send("Activities not set.", ephemeral=True)
+            if not amount > 0 and amount < 10:
+                return await interaction.followup.send("Invalid amount.", ephemeral=True)
             names_set = {name.lower() if not name.startswith("<@")
                          else interaction.guild.get_member(int(name.strip("<@!>"))).display_name.lower()
                          for name in re.split(r'[\s`\-=~#$%^&*()_+\[\]{};\'\\:"|,./?"]', participants)}
@@ -66,7 +70,7 @@ def assign_commands(bot: BotImpl):
                     participant_str = ", ".join(names_list[idx:idx + 4])
                     e.add_field(name="", value=participant_str, inline=False)
                 e.set_image(url=screenshot.url)
-                e.set_footer(text=activity)
+                e.set_footer(text=f"{activity} x {amount}")
                 embeds.append(e)
             view = ActivityPostButtons()
             view.set_bot(bot)
@@ -102,7 +106,7 @@ def assign_commands(bot: BotImpl):
                 return await interaction.followup.send(f"Something went wrong.", ephemeral=True)
             await interaction.followup.send(f"{nickname} not found.", ephemeral=True)
 
-    @bot.tree.command(name="add_scouts")
+    @bot.tree.command(name="add_scouts", guilds=[discord.Object(id=310584945175429122)])
     @discord.app_commands.describe(
         scouts_foods="<Member1:Foods,Member2:Foods> etc."
     )
@@ -125,7 +129,7 @@ def assign_commands(bot: BotImpl):
                     return await interaction.response.send_message("Something went wrong.", ephemeral=True)
                 await interaction.response.send_message("Points updated.", ephemeral=True)
 
-    @bot.tree.command(name="add_wb_done")
+    @bot.tree.command(name="add_wb_done", guilds=[discord.Object(id=310584945175429122)])
     @discord.app_commands.describe(
         members_foods="<Member1:Foods,Member2:Foods> etc."
     )
@@ -148,7 +152,7 @@ def assign_commands(bot: BotImpl):
                     return await interaction.response.send_message("Something went wrong.", ephemeral=True)
                 await interaction.response.send_message("Points updated.", ephemeral=True)
 
-    @bot.tree.command(name="set_roles")
+    @bot.tree.command(name="set_roles", guilds=[discord.Object(id=310584945175429122)])
     @discord.app_commands.describe(
         roles_points="<Role1:Points,Role2:Points> etc."
     )
@@ -176,7 +180,7 @@ def assign_commands(bot: BotImpl):
     async def set_activity_load(interaction: discord.Interaction, sheet_id: str, range_name: str):
         guild_id = str(interaction.guild.id)
         async with bot.locks[guild_id]:
-            await interaction.response.defer()
+            await interaction.response.defer(ephemeral=True)
             if not is_valid_range_name(range_name):
                 return await interaction.followup.send("Invalid range", ephemeral=True)
             if not is_valid_sheet_id(sheet_id):
@@ -190,7 +194,7 @@ def assign_commands(bot: BotImpl):
     async def set_members_load(interaction: discord.Interaction, sheet_id: str, range_name: str):
         guild_id = str(interaction.guild.id)
         async with bot.locks[guild_id]:
-            await interaction.response.defer()
+            await interaction.response.defer(ephemeral=True)
             if not is_valid_sheet_id(sheet_id):
                 return await interaction.followup.send("Invalid sheet ID", ephemeral=True)
             if not is_valid_range_name(range_name):
@@ -204,7 +208,7 @@ def assign_commands(bot: BotImpl):
     async def set_activity_write(interaction: discord.Interaction, sheet_id: str, range_name: str):
         guild_id = str(interaction.guild.id)
         async with bot.locks[guild_id]:
-            await interaction.response.defer()
+            await interaction.response.defer(ephemeral=True)
             if not is_valid_sheet_id(sheet_id):
                 return await interaction.followup.send("Invalid sheet ID", ephemeral=True)
             if not is_valid_range_name(range_name):

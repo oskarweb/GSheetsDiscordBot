@@ -16,6 +16,8 @@ class ActivityPostButtons(discord.ui.View):
             return
         async with self.bot.locks[guild_id]:
             await interaction.response.defer(ephemeral=True)
+            if not self.bot.guilds_data[guild_id]["permissions"].get("activity_mod"):
+                return await interaction.followup.send("Activity mod not set.", ephemeral=True)
             if self.bot.guilds_data[guild_id]["permissions"]["activity_mod"] not in [role.id for role in interaction.user.roles]:
                 return await interaction.followup.send("You don't have permission to handle activities", ephemeral=True)
             if interaction.message.id in self.bot.guilds_data[guild_id]["activities_awaiting_approval"]:
@@ -31,6 +33,8 @@ class ActivityPostButtons(discord.ui.View):
             return
         async with self.bot.locks[guild_id]:
             await interaction.response.defer(ephemeral=True)
+            if not self.bot.guilds_data[guild_id]["permissions"].get("activity_mod"):
+                return await interaction.followup.send("Activity mod not set.", ephemeral=True)
             if self.bot.guilds_data[guild_id]["permissions"]["activity_mod"] not in [role.id for role in interaction.user.roles]:
                 return await interaction.followup.send("You don't have permission to handle activities", ephemeral=True)
             if interaction.message.id in self.bot.guilds_data[guild_id]["activities_awaiting_approval"]:

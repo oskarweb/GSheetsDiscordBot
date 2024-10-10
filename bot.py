@@ -53,8 +53,8 @@ class BotImpl(commands.Bot):
         for field in message.embeds[0].fields:
             participants.extend(field.value.split(", "))
         participants_str = ", ".join(participants)
-        activity = message.embeds[0].footer.text
-        names_values = [(name, 1) for name in participants]
+        activity, amount = message.embeds[0].footer.text.split(" x ")
+        names_values = [(name, amount) for name in participants]
         with PrioritySheet(
                 self.guilds_data[guild_id]["sheet"]["activities_write"]["id"],
                 self.guilds_data[guild_id]["sheet"]["activities_write"]["range_name"]
@@ -172,21 +172,18 @@ class BotImpl(commands.Bot):
 
     async def write_sheet_file(self, interaction: discord.Interaction, guild_id: str, sheet_id: str, sheet_dict: dict):
         self.guilds_data[guild_id]["sheet"].update(sheet_dict)
-        file_data = {}
         try:
             with open(os.path.join(GUILDS_DIR, guild_id, SHEET_FILE), "r") as sheet_file:
                 file_data = json.load(sheet_file)
         except FileNotFoundError:
             file_data = {}
-        else:
-            if len(file_data) != 0:
-                sheets_ids = [sheet["id"] for sheet in file_data.values()]
-                if sheet_id in self.locked_sheets and sheet_id not in sheets_ids:
-                    return await interaction.followup.send("Sheet already in use.", ephemeral=True)
-        finally:
-            file_data.update(sheet_dict)
-            with open(os.path.join(GUILDS_DIR, guild_id, SHEET_FILE), "w") as sheet_file:
-                json.dump(file_data, sheet_file)
+        if len(file_data) != 0:
+            sheets_ids = [sheet["id"] for sheet in file_data.values()]
+            if sheet_id in self.locked_sheets and sheet_id not in sheets_ids:
+                return await interaction.followup.send("Sheet already in use.", ephemeral=True)
+        file_data.update(sheet_dict)
+        with open(os.path.join(GUILDS_DIR, guild_id, SHEET_FILE), "w") as sheet_file:
+            json.dump(file_data, sheet_file)
 
 # Class BotImpl
 
